@@ -36,7 +36,7 @@ phases:
 
       - echo "Building Docker image..."
 
-      - docker build -t $ECR_REPO -f Dockerfile.inference .
+      - docker build -t $ECR_REPO -f Dockerfile .
 
       - echo "Tagging image..."
 
