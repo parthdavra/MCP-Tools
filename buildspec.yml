@@ -25,7 +25,7 @@ phases:
       - echo "Pushing image..."
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
       - echo "Writing imagedefinitions.json..."
-      - printf '[{"name":"inference","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG > imagedefinitions.json
+      - printf '[{"name":"dstrmaysam-mcp-container","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG > imagedefinitions.json
 artifacts:
   files:
     - imagedefinitions.json
