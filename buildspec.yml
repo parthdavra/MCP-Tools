@@ -1,61 +1,31 @@
 version: 0.2
-
 env:
-
   variables:
-
     AWS_REGION: eu-west-2
-
     ECR_REPO: dstrmaysam-mcp
-
     AWS_ACCOUNT_ID: 666127452756
-
     IMAGE_TAG: latest
-
 phases:
-
   pre_build:
-
     commands:
-
       - echo "Checking AWS identity..."
-
       - aws sts get-caller-identity
-
       - echo "Listing ECR repos..."
-
       - aws ecr describe-repositories --region $AWS_REGION || echo "No repos or no access"
-
       - echo "Logging into ECR..."
-
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
   build:
-
     commands:
-
       - echo "Building Docker image..."
-
       - docker build -t $ECR_REPO -f Dockerfile .
-
       - echo "Tagging image..."
-
       - docker tag $ECR_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
-
   post_build:
-
     commands:
-
       - echo "Pushing image..."
-
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
-
       - echo "Writing imagedefinitions.json..."
-
       - printf '[{"name":"inference","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG > imagedefinitions.json
-
 artifacts:
-
   files:
-
-    - imagedefinitions.json 
+    - imagedefinitions.json
