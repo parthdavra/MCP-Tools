@@ -130,6 +130,33 @@ Resources:
         Type: CODEPIPELINE
       Source:
         Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          env:
+            variables:
+              AWS_REGION: eu-west-2
+          phases:
+            pre_build:
+              commands:
+                - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                - IMAGE_TAG=$CODEBUILD_RESOLVED_SOURCE_VERSION
+                - if [ -z "$IMAGE_TAG" ]; then IMAGE_TAG=latest; fi
+                - IMAGE_TAG=$(echo "$IMAGE_TAG" | cut -c1-12)
+                - test -n "$MCP_ECR_REPOSITORY_URI"
+                - test -n "$MCP_CONTAINER_NAME"
+                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+            build:
+              commands:
+                - docker build -t $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG -f Dockerfile .
+            post_build:
+              commands:
+                - docker tag $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG $MCP_ECR_REPOSITORY_URI:mcp-latest
+                - docker push $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG
+                - docker push $MCP_ECR_REPOSITORY_URI:mcp-latest
+                - printf '[{"name":"%s","imageUri":"%s"}]' "$MCP_CONTAINER_NAME" "$MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG" > imagedefinitions.json
+          artifacts:
+            files:
+              - imagedefinitions.json
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_MEDIUM
