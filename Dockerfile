@@ -7,6 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 
-EXPOSE 8000
+EXPOSE 9000
 
-CMD ["python", "src/calculator_server.py"]
+CMD ["python", "src/mcp_tools_server.py"]

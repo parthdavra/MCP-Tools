@@ -2,30 +2,25 @@ version: 0.2
 env:
   variables:
     AWS_REGION: eu-west-2
-    ECR_REPO: dstrmaysam-mcp
-    AWS_ACCOUNT_ID: 666127452756
-    IMAGE_TAG: latest
+    MCP_CONTAINER_NAME: mcp-tools
 phases:
   pre_build:
     commands:
-      - echo "Checking AWS identity..."
-      - aws sts get-caller-identity
-      - echo "Listing ECR repos..."
-      - aws ecr describe-repositories --region $AWS_REGION || echo "No repos or no access"
-      - echo "Logging into ECR..."
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - IMAGE_TAG=$CODEBUILD_RESOLVED_SOURCE_VERSION
+      - if [ -z "$IMAGE_TAG" ]; then IMAGE_TAG=latest; fi
+      - IMAGE_TAG=$(echo "$IMAGE_TAG" | cut -c1-12)
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
   build:
     commands:
-      - echo "Building Docker image..."
-      - docker build -t $ECR_REPO -f Dockerfile .
-      - echo "Tagging image..."
-      - docker tag $ECR_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
+      - test -n "$MCP_ECR_REPOSITORY_URI"
+      - docker build -t $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG -f Dockerfile .
   post_build:
     commands:
-      - echo "Pushing image..."
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
-      - echo "Writing imagedefinitions.json..."
-      - printf '[{"name":"dstrmaysam-mcp-container","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG > imagedefinitions.json
+      - docker tag $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG $MCP_ECR_REPOSITORY_URI:mcp-latest
+      - docker push $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG
+      - docker push $MCP_ECR_REPOSITORY_URI:mcp-latest
+      - printf '[{"name":"%s","imageUri":"%s"}]' "$MCP_CONTAINER_NAME" "$MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG" > imagedefinitions.json
 artifacts:
   files:
     - imagedefinitions.json
