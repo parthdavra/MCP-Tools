@@ -115,6 +115,41 @@ The server logs every request with the project and tool name, for example:
 mcp_tool_request project=dstrmaysam-healthcare-knowledge-multi-agent tool=postgres_deterministic_lookup
 ```
 
+## Deploy Into Healthcare AWS VPC
+
+The healthcare project CloudFormation stack owns the MCP runtime infrastructure for the dev environment:
+
+- ECR repository `dstrmaysam-healthcare-knowledge-multi-agent-dev-mcp`
+- ECS/Fargate service `dstrmaysam-healthcare-knowledge-multi-agent-dev-mcp`
+- Cloud Map URL `http://mcp-tools.dstrmaysam-hkm-dev.local:9000/sse`
+- Public dev ALB URL from the healthcare stack `McpPublicUrl` output
+- MCP task role, security group, RDS ingress, log group, and OpenSearch Serverless access policy principal
+
+This repo owns only the MCP image build and service deployment. The pipeline template is:
+
+```text
+infra/mcp-pipeline.yml
+```
+
+The MCP pipeline uses a GitHub CodeStar connection, builds the Docker image, pushes both `mcp-<commit>` and `mcp-latest`, emits `imagedefinitions.json` for the `mcp-tools` container, and updates only the MCP ECS service created by the healthcare stack.
+
+Deploy order:
+
+1. Deploy or update the healthcare stack with `McpDesiredCount=0`.
+2. Copy these healthcare stack outputs into the MCP pipeline parameters:
+   - `McpEcrRepositoryUri`
+   - `EcsClusterName`
+   - `McpServiceName`
+   - `EcsExecutionRoleArn`
+   - `McpTaskRoleArn`
+3. Deploy `infra/mcp-pipeline.yml` from this repo.
+4. Run the MCP pipeline so it pushes `mcp-latest`.
+5. Update the healthcare stack with `McpDesiredCount=1`.
+6. Set the healthcare backend app secret to use `tool_execution_mode=mcp` and `mcp_server_url=http://mcp-tools.dstrmaysam-hkm-dev.local:9000/sse`.
+7. Use the healthcare stack `McpPublicUrl` output for dev calls from outside the VPC.
+
+The backend should use the private Cloud Map URL when it runs in the same VPC. The public ALB URL is for dev/external access and is controlled by the healthcare stack `PublicIngressCidr` parameter.
+
 ## Adding More Projects
 
 Add project tool logic in its own module, then register each callable in `src/mcp_tools_server.py` with `@mcp.tool()`. Keep tool names stable so caller systems can continue doing their own agent/tool selection and only delegate execution.
