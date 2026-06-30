@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 from typing import Any
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from fastmcp import FastMCP
 
@@ -35,6 +37,30 @@ else:
 
 mcp = FastMCP("DstrMaysam MCP Tools")
 HEALTHCARE_TOOLS = HealthcareProjectTools(HealthcareMcpConfig.from_env())
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path == "/health":
+            body = b"ok"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, format: str, *args: Any) -> None:
+        logger.debug("mcp_health_check " + format, *args)
+
+
+def _start_health_server(host: str, port: int) -> None:
+    server = ThreadingHTTPServer((host, port), _HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, name="mcp-health-server", daemon=True)
+    thread.start()
+    logger.info("mcp_health_server_started host=%s port=%s", host, port)
 
 
 def _validate_project(project_id: str) -> str | None:
@@ -184,4 +210,6 @@ def sqrt(n: float) -> float:
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "9000"))
+    health_port = int(os.getenv("HEALTH_PORT", "9001"))
+    _start_health_server(host, health_port)
     mcp.run(transport="sse", host=host, port=port)
