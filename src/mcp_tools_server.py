@@ -12,6 +12,7 @@ from healthcare_knowledge_tools import (
     PROJECT_ALIASES,
     HealthcareMcpConfig,
     HealthcareProjectTools,
+    hydrate_env_from_aws_secret,
 )
 
 
@@ -20,6 +21,17 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger("mcp_tools")
+
+secret_hydration = hydrate_env_from_aws_secret()
+if secret_hydration.get("loaded"):
+    logger.info(
+        "mcp_runtime_secret_loaded secret=%s keys=%s skipped_keys=%s",
+        secret_hydration.get("secret_name"),
+        ",".join(secret_hydration.get("keys") or []),
+        ",".join(secret_hydration.get("skipped_keys") or []),
+    )
+else:
+    logger.info("mcp_runtime_secret_skipped reason=%s", secret_hydration.get("reason"))
 
 mcp = FastMCP("DstrMaysam MCP Tools")
 HEALTHCARE_TOOLS = HealthcareProjectTools(HealthcareMcpConfig.from_env())

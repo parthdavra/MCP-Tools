@@ -7,8 +7,31 @@ services:
       - HOST=0.0.0.0
       - PORT=9000
       - MCP_DEFAULT_PROJECT_ID=${MCP_DEFAULT_PROJECT_ID:-dstrmaysam-healthcare-knowledge-multi-agent}
+      - MCP_APP_ENV=${MCP_APP_ENV:-local}
+      - MCP_SECRET_NAME=${MCP_SECRET_NAME:-/dstrmaysam-healthcare-knowledge-multi-agent-dev/mcp-tools}
+      - AWS_REGION=${AWS_REGION:-eu-west-2}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-${AWS_REGION:-eu-west-2}}
+      - AWS_PROFILE=${AWS_PROFILE:-default}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_SHARED_CREDENTIALS_FILE=${AWS_SHARED_CREDENTIALS_FILE:-/root/.aws/credentials}
+      - AWS_CONFIG_FILE=${AWS_CONFIG_FILE:-/root/.aws/config}
       - HEALTHCARE_LOCAL_DATA_DIR=${HEALTHCARE_LOCAL_DATA_DIR:-/app/data}
       - HEALTHCARE_MANIFEST_KEY=${HEALTHCARE_MANIFEST_KEY:-manifests/documents.json}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_RAW_PREFIX=${S3_RAW_PREFIX:-raw/}
+      - OPENSEARCH_ENDPOINT=${OPENSEARCH_ENDPOINT:-}
+      - OPENSEARCH_INDEX=${OPENSEARCH_INDEX:-dstrmaysam-healthcare-knowledge-multi-agent-dev}
+      - AZURE_OPENAI_SECRET_NAME=${AZURE_OPENAI_SECRET_NAME:-/dstrmaysam-healthcare-knowledge-multi-agent-dev/azure-openai}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-12-01-preview}
+      - AZURE_OPENAI_EMBEDDING_DEPLOYMENT=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-}
+      - RAG_TOP_K=${RAG_TOP_K:-10}
+      - RAG_NEIGHBOR_CHUNKS=${RAG_NEIGHBOR_CHUNKS:-1}
+      - RAG_EMBEDDING_CACHE_SIZE=${RAG_EMBEDDING_CACHE_SIZE:-512}
+      - DOCUMENT_MANIFEST_CACHE_TTL_SECONDS=${DOCUMENT_MANIFEST_CACHE_TTL_SECONDS:-300}
       - POSTGRES_HOST=${POSTGRES_HOST:-host.docker.internal}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-healthcare_agent}
@@ -17,4 +40,5 @@ services:
       - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-disable}
     volumes:
       - ../dstrmaysam-heakthcare-knowledge-agent-multi-agent/data:/app/data:ro
+      - ${USERPROFILE}/.aws:/root/.aws:ro
     restart: unless-stopped
