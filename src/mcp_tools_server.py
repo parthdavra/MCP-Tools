@@ -7,7 +7,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from healthcare_knowledge_tools import (
+from tools.healthcare_knowledge_tools import (
     HEALTHCARE_PROJECT_ID,
     PROJECT_ALIASES,
     HealthcareMcpConfig,
