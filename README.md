@@ -16,6 +16,14 @@ The healthcare tools follow the same execution flow as the backend tools:
 4. Execute the selected tool against local or AWS resources.
 5. Return the same style of tool evidence to the backend for synthesis.
 
+Deterministic Postgres lookup is shared with the healthcare backend through the `healthcare-tools-core` Python package. The package source lives in the healthcare repo under:
+
+```text
+backend/packages/healthcare_tools_core
+```
+
+For local development, this repo can import that package from the sibling healthcare checkout. Docker and AWS builds install it from the healthcare GitHub repo through `requirements.txt`, so push the healthcare repo package changes before running the MCP pipeline.
+
 ## Run Locally
 
 ```bash
