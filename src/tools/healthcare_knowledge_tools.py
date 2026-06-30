@@ -3,12 +3,29 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
+
+_local_core_src = (
+    Path(__file__).resolve().parents[3]
+    / "dstrmaysam-heakthcare-knowledge-agent-multi-agent"
+    / "backend"
+    / "packages"
+    / "healthcare_tools_core"
+    / "src"
+)
+if _local_core_src.exists() and str(_local_core_src) not in sys.path:
+    sys.path.insert(0, str(_local_core_src))
+
+from healthcare_tools_core import (
+    DeterministicLookupService,
+    user_context_from_payload,
+)
 
 STOPWORDS = {
     "a",
@@ -200,6 +217,7 @@ class HealthcareMcpConfig:
     rag_neighbor_chunks: int
     rag_embedding_cache_size: int
     document_manifest_cache_ttl_seconds: int
+    deterministic_lookup_enabled: bool
     postgres_host: str
     postgres_port: int
     postgres_db: str
@@ -232,6 +250,8 @@ class HealthcareMcpConfig:
             rag_neighbor_chunks=int(os.getenv("RAG_NEIGHBOR_CHUNKS", "1")),
             rag_embedding_cache_size=int(os.getenv("RAG_EMBEDDING_CACHE_SIZE", "512")),
             document_manifest_cache_ttl_seconds=int(os.getenv("DOCUMENT_MANIFEST_CACHE_TTL_SECONDS", "300")),
+            deterministic_lookup_enabled=os.getenv("DETERMINISTIC_LOOKUP_ENABLED", "true").strip().lower()
+            in {"1", "true", "yes", "on"},
             postgres_host=os.getenv("POSTGRES_HOST", "host.docker.internal"),
             postgres_port=int(os.getenv("POSTGRES_PORT", "5432")),
             postgres_db=os.getenv("POSTGRES_DB", "healthcare_agent"),
@@ -516,46 +536,36 @@ class HealthcareProjectTools:
         tool_name: str = "",
         extra: dict[str, Any] | None = None,
     ) -> str:
-        category = self._category_from_payload(query, tool_name, extra or {})
-        scopes = _access_scopes(user_context)
-        limit = 50
+        extra = extra or {}
+        user = user_context_from_payload(user_context)
+        table_assets = extra.get("table_assets") if isinstance(extra.get("table_assets"), list) else None
         try:
-            rows = self._query_table(category, query, scopes, limit)
-            aggregate_result = None
-            if "how many" in query.lower() or "count" in query.lower() or "total" in query.lower():
-                aggregate_result = {
-                    "type": "count",
-                    "matching_rows": len(rows),
-                    "counts_by_source": {CRM_TABLES[category]["table"]: len(rows)},
-                    "source_tables": [CRM_TABLES[category]["table"]],
-                }
-            message = "No matching rows found." if not rows else f"Found {len(rows)} matching row(s)."
+            result = DeterministicLookupService(self.config).lookup(
+                query,
+                user,
+                limit=50,
+                table_assets=table_assets,
+            )
+            payload = json.loads(result.to_json())
+            lookup_plan = payload.get("lookup_plan") if isinstance(payload.get("lookup_plan"), dict) else {}
+            lookup_plan["source"] = "mcp_shared_core"
+            lookup_plan["tool_name"] = tool_name
+            payload["lookup_plan"] = lookup_plan
+            return json.dumps(payload, indent=2, default=str)
+        except Exception as exc:
+            category = self._category_from_payload(query, tool_name, extra)
+            scopes = _access_scopes(user_context)
             return json.dumps(
                 {
                     "category": category,
-                    "message": message,
+                    "message": f"MCP shared deterministic lookup failed: {type(exc).__name__}: {exc}",
                     "access_scopes_applied": list(scopes),
                     "lookup_plan": {
                         "category": category,
-                        "aggregate_intent": "count" if aggregate_result else "",
-                        "aggregate_result": aggregate_result,
-                        "matched_table_sources": [CRM_TABLES[category]["table"]] if rows else [],
-                        "resolved_today": date.today().isoformat(),
-                        "requested_rota_dates": _requested_dates(query),
-                        "source": "mcp_postgres",
+                        "source": "mcp_shared_core",
+                        "tool_name": tool_name,
+                        "error": str(exc),
                     },
-                    "rows": rows,
-                },
-                indent=2,
-                default=str,
-            )
-        except Exception as exc:
-            return json.dumps(
-                {
-                    "category": category,
-                    "message": f"MCP Postgres deterministic lookup failed: {type(exc).__name__}: {exc}",
-                    "access_scopes_applied": list(scopes),
-                    "lookup_plan": {"category": category, "source": "mcp_postgres", "error": str(exc)},
                     "rows": [],
                 },
                 indent=2,
