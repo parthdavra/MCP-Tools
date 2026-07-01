@@ -16,6 +16,7 @@ from tools.healthcare_knowledge_tools import (
     HealthcareProjectTools,
     hydrate_env_from_aws_secret,
 )
+from tools.stock_market_tools import register_stock_market_tools
 
 
 logging.basicConfig(
@@ -37,6 +38,7 @@ else:
 
 mcp = FastMCP("DstrMaysam MCP Tools")
 HEALTHCARE_TOOLS = HealthcareProjectTools(HealthcareMcpConfig.from_env())
+register_stock_market_tools(mcp)
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
