@@ -1,0 +1,310 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CI/CD pipeline for the MCP Tools repo deploying to the healthcare project MCP ECS service.
+
+Parameters:
+  BaseName:
+    Type: String
+    Default: dstrmaysam-healthcare-knowledge-multi-agent-dev
+  ShortName:
+    Type: String
+    Default: dstrmaysam-hkm-dev
+    AllowedPattern: "^[a-z][a-z0-9-]{2,31}$"
+  ProjectTag:
+    Type: String
+    Default: dstrmaysam-healthcare-knowledge-multi-agent
+  ApplicationTag:
+    Type: String
+    Default: dstrmaysam
+  OwnerTag:
+    Type: String
+    Default: Sabin
+  CodeStarConnectionArn:
+    Type: String
+    Description: CodeStar Connections ARN for the MCP GitHub repository.
+  RepositoryId:
+    Type: String
+    Description: MCP GitHub repository in owner/repo form.
+  RepositoryBranch:
+    Type: String
+    Default: main
+  McpEcrRepositoryUri:
+    Type: String
+    Description: McpEcrRepositoryUri output from the healthcare foundation stack.
+  EcsClusterName:
+    Type: String
+    Description: EcsClusterName output from the healthcare foundation stack.
+  McpServiceName:
+    Type: String
+    Description: McpServiceName output from the healthcare foundation stack.
+  McpContainerName:
+    Type: String
+    Default: mcp-tools
+  EcsExecutionRoleArn:
+    Type: String
+    Description: EcsExecutionRoleArn output from the healthcare foundation stack.
+  McpTaskRoleArn:
+    Type: String
+    Description: McpTaskRoleArn output from the healthcare foundation stack.
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BaseName}-mcp-pipeline"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ShortName}-mcp-codebuild-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BuildAndPackageMcpImage
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Sid: EcrPush
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeRepositories
+                  - ecr:GetAuthorizationToken
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: "*"
+              - Sid: PipelineArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}/*"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${BaseName}-mcp-build"
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          env:
+            variables:
+              AWS_REGION: eu-west-2
+          phases:
+            pre_build:
+              commands:
+                - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                - IMAGE_TAG=$CODEBUILD_RESOLVED_SOURCE_VERSION
+                - if [ -z "$IMAGE_TAG" ]; then IMAGE_TAG=latest; fi
+                - IMAGE_TAG=$(echo "$IMAGE_TAG" | cut -c1-12)
+                - test -n "$MCP_ECR_REPOSITORY_URI"
+                - test -n "$MCP_CONTAINER_NAME"
+                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+            build:
+              commands:
+                - docker build -t $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG -f Dockerfile .
+            post_build:
+              commands:
+                - docker tag $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG $MCP_ECR_REPOSITORY_URI:mcp-latest
+                - docker push $MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG
+                - docker push $MCP_ECR_REPOSITORY_URI:mcp-latest
+                - printf '[{"name":"%s","imageUri":"%s"}]' "$MCP_CONTAINER_NAME" "$MCP_ECR_REPOSITORY_URI:mcp-$IMAGE_TAG" > imagedefinitions.json
+          artifacts:
+            files:
+              - imagedefinitions.json
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: MCP_ECR_REPOSITORY_URI
+            Value: !Ref McpEcrRepositoryUri
+          - Name: MCP_CONTAINER_NAME
+            Value: !Ref McpContainerName
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ShortName}-mcp-pipeline-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: McpPipelineDeployAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: SourceConnection
+                Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref CodeStarConnectionArn
+              - Sid: ArtifactBucket
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucket}/*"
+              - Sid: CodeBuild
+                Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt BuildProject.Arn
+              - Sid: EcsServiceDeploy
+                Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                Resource: "*"
+              - Sid: PassMcpTaskRoles
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !Ref EcsExecutionRoleArn
+                  - !Ref McpTaskRoleArn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${BaseName}-mcp-pipeline"
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Ref RepositoryId
+                BranchName: !Ref RepositoryBranch
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: BuildAndPackage
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref BuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: DeployMcp
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: "1"
+              Configuration:
+                ClusterName: !Ref EcsClusterName
+                ServiceName: !Ref McpServiceName
+                FileName: imagedefinitions.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectTag
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+
+Outputs:
+  McpPipelineName:
+    Value: !Ref Pipeline
+  McpBuildProjectName:
+    Value: !Ref BuildProject
+  McpArtifactBucketName:
+    Value: !Ref ArtifactBucket
