@@ -211,10 +211,14 @@ def sqrt(n: float) -> float:
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
-    if os.getenv("MCP_APP_ENV", "").lower() in {"cloud", "aws", "prod", "production"}:
+    if (
+        os.getenv("AWS_EXECUTION_ENV")
+        or os.getenv("ECS_CONTAINER_METADATA_URI")
+        or os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+    ):
         # The shared AWS ECS service and target group are configured for container port 8000.
         # Some hydrated runtime secrets include PORT=9000 for local/other deployments, so cloud
-        # mode intentionally prefers MCP_PORT or 8000 instead of the generic PORT variable.
+        # ECS intentionally prefers MCP_PORT or 8000 instead of the generic PORT variable.
         port = int(os.getenv("MCP_PORT", "8000"))
     else:
         port = int(os.getenv("PORT", "9000"))
