@@ -2,7 +2,8 @@ services:
   mcp-tools:
     build: .
     ports:
-      - "9000:9000"
+      - "8001:9000"
+      - "9001:9001"
     environment:
       - HOST=0.0.0.0
       - PORT=9000
@@ -38,7 +39,11 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-healthcare_agent}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-healthcare_agent_dev}
       - POSTGRES_SSLMODE=${POSTGRES_SSLMODE:-disable}
+      - ZED_HEALTH_BACKEND_PATH=/zed-healthcare/backend
+      - ZED_HEALTH_DATA_DIR=/zed-healthcare/data
     volumes:
       - ../dstrmaysam-heakthcare-knowledge-agent-multi-agent/data:/app/data:ro
+      - C:/Users/fakha/itc/Project Healthcare/backend:/zed-healthcare/backend:ro
+      - C:/Users/fakha/itc/Project Healthcare/data:/zed-healthcare/data
       - ${USERPROFILE}/.aws:/root/.aws:ro
     restart: unless-stopped

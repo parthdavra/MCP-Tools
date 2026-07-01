@@ -18,6 +18,8 @@ from tools.healthcare_knowledge_tools import (
     hydrate_env_from_aws_secret,
 )
 from tools.finpilot import FINPILOT_PROJECT_ID, FinPilotMcpConfig, FinPilotProjectTools
+from tools.zed_healthcare_tools import ZedHealthcareTools
+from tools.stock_market_tools import register_stock_market_tools
 
 
 logging.basicConfig(
@@ -40,6 +42,8 @@ else:
 mcp = FastMCP("DstrMaysam MCP Tools")
 HEALTHCARE_TOOLS = HealthcareProjectTools(HealthcareMcpConfig.from_env())
 FINPILOT_TOOLS = FinPilotProjectTools(FinPilotMcpConfig.from_env())
+ZED_HEALTH_TOOLS = ZedHealthcareTools.from_env()
+register_stock_market_tools(mcp)
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
@@ -112,6 +116,10 @@ def _run_healthcare_tool(project_id: str, tool_name: str, payload: dict[str, Any
 def _run_finpilot_tool(tool_name: str, payload: dict[str, Any]) -> str:
     logger.info("mcp_tool_request project=%s tool=%s", FINPILOT_PROJECT_ID, tool_name)
     return FINPILOT_TOOLS.execute(tool_name, payload)
+def _run_zed_health_tool(method_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    logger.info("mcp_tool_request project=zed-healthcare tool=%s", method_name)
+    method = getattr(ZED_HEALTH_TOOLS, method_name)
+    return method(payload)
 
 
 @mcp.tool()
@@ -274,6 +282,105 @@ def finpilot_buying_power(payload: dict[str, Any] | None = None) -> str:
 def finpilot_search_documents(payload: dict[str, Any]) -> str:
     """Return FinPilot document search evidence."""
     return _run_finpilot_tool("finpilot_search_documents", payload)
+def zed_health_search_policy_documents(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: search policy documents with RAG retrieval."""
+    return _run_zed_health_tool("search_policy_documents", payload)
+
+
+@mcp.tool()
+def zed_health_search_all_lookup_tables(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: search deterministic lookup CSV/RDS tables."""
+    return _run_zed_health_tool("search_all_lookup_tables", payload)
+
+
+@mcp.tool()
+def zed_health_lookup_doctor(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: lookup doctor records."""
+    return _run_zed_health_tool("lookup_doctor", payload)
+
+
+@mcp.tool()
+def zed_health_lookup_availability(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: lookup staff availability and clinic slots."""
+    return _run_zed_health_tool("lookup_availability", payload)
+
+
+@mcp.tool()
+def zed_health_lookup_nurse_in_charge(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: lookup nurse in charge for a department."""
+    return _run_zed_health_tool("lookup_nurse_in_charge", payload)
+
+
+@mcp.tool()
+def zed_health_get_patient_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: get patient profile."""
+    return _run_zed_health_tool("get_patient_profile", payload)
+
+
+@mcp.tool()
+def zed_health_get_assigned_doctor(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: get assigned doctor for a patient."""
+    return _run_zed_health_tool("get_assigned_doctor", payload)
+
+
+@mcp.tool()
+def zed_health_get_patient_appointments(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: get patient appointments."""
+    return _run_zed_health_tool("get_patient_appointments", payload)
+
+
+@mcp.tool()
+def zed_health_get_patient_lab_reports(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: get patient lab reports."""
+    return _run_zed_health_tool("get_patient_lab_reports", payload)
+
+
+@mcp.tool()
+def zed_health_get_patient_lab_report_details(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: get patient lab report details."""
+    return _run_zed_health_tool("get_patient_lab_report_details", payload)
+
+
+@mcp.tool()
+def zed_health_summarise_lab_reports(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: summarise patient lab reports."""
+    return _run_zed_health_tool("summarise_lab_reports", payload)
+
+
+@mcp.tool()
+def zed_health_book_patient_appointment(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: book a patient appointment."""
+    return _run_zed_health_tool("book_patient_appointment", payload)
+
+
+@mcp.tool()
+def zed_health_get_guardian_nhs_news(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: get NHS Guardian news records."""
+    return _run_zed_health_tool("get_guardian_nhs_news", payload)
+
+
+@mcp.tool()
+def zed_health_list_policy_documents(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: list policy documents."""
+    return _run_zed_health_tool("list_policy_documents", payload)
+
+
+@mcp.tool()
+def zed_health_list_lookup_csv_documents(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: list lookup CSV documents."""
+    return _run_zed_health_tool("list_lookup_csv_documents", payload)
+
+
+@mcp.tool()
+def zed_health_store_chat_message(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: store a chat history message."""
+    return _run_zed_health_tool("store_chat_message", payload)
+
+
+@mcp.tool()
+def zed_health_list_chat_history(payload: dict[str, Any]) -> dict[str, Any]:
+    """ZED Healthcare: list chat history."""
+    return _run_zed_health_tool("list_chat_history", payload)
 
 
 @mcp.tool()
@@ -317,7 +424,17 @@ def sqrt(n: float) -> float:
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "9000"))
+    if (
+        os.getenv("AWS_EXECUTION_ENV")
+        or os.getenv("ECS_CONTAINER_METADATA_URI")
+        or os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+    ):
+        # The shared AWS ECS service and target group are configured for container port 8000.
+        # Some hydrated runtime secrets include PORT=9000 for local/other deployments, so cloud
+        # ECS intentionally prefers MCP_PORT or 8000 instead of the generic PORT variable.
+        port = int(os.getenv("MCP_PORT", "8000"))
+    else:
+        port = int(os.getenv("PORT", "9000"))
     health_port = int(os.getenv("HEALTH_PORT", "9001"))
     _start_health_server(host, health_port)
     mcp.run(transport="sse", host=host, port=port)
