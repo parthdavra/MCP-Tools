@@ -17,6 +17,7 @@ from tools.healthcare_knowledge_tools import (
     hydrate_env_from_aws_secret,
 )
 from tools.zed_healthcare_tools import ZedHealthcareTools
+from tools.stock_market_tools import register_stock_market_tools
 
 
 logging.basicConfig(
@@ -39,6 +40,7 @@ else:
 mcp = FastMCP("DstrMaysam MCP Tools")
 HEALTHCARE_TOOLS = HealthcareProjectTools(HealthcareMcpConfig.from_env())
 ZED_HEALTH_TOOLS = ZedHealthcareTools.from_env()
+register_stock_market_tools(mcp)
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
@@ -319,7 +321,17 @@ def sqrt(n: float) -> float:
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "9000"))
+    if (
+        os.getenv("AWS_EXECUTION_ENV")
+        or os.getenv("ECS_CONTAINER_METADATA_URI")
+        or os.getenv("ECS_CONTAINER_METADATA_URI_V4")
+    ):
+        # The shared AWS ECS service and target group are configured for container port 8000.
+        # Some hydrated runtime secrets include PORT=9000 for local/other deployments, so cloud
+        # ECS intentionally prefers MCP_PORT or 8000 instead of the generic PORT variable.
+        port = int(os.getenv("MCP_PORT", "8000"))
+    else:
+        port = int(os.getenv("PORT", "9000"))
     health_port = int(os.getenv("HEALTH_PORT", "9001"))
     _start_health_server(host, health_port)
     mcp.run(transport="sse", host=host, port=port)
