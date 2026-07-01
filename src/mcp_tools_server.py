@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import math
 import os
 import threading
@@ -16,6 +17,7 @@ from tools.healthcare_knowledge_tools import (
     HealthcareProjectTools,
     hydrate_env_from_aws_secret,
 )
+from tools.finpilot import FINPILOT_PROJECT_ID, FinPilotMcpConfig, FinPilotProjectTools
 from tools.zed_healthcare_tools import ZedHealthcareTools
 from tools.stock_market_tools import register_stock_market_tools
 
@@ -39,6 +41,7 @@ else:
 
 mcp = FastMCP("DstrMaysam MCP Tools")
 HEALTHCARE_TOOLS = HealthcareProjectTools(HealthcareMcpConfig.from_env())
+FINPILOT_TOOLS = FinPilotProjectTools(FinPilotMcpConfig.from_env())
 ZED_HEALTH_TOOLS = ZedHealthcareTools.from_env()
 register_stock_market_tools(mcp)
 
@@ -55,6 +58,34 @@ class _HealthHandler(BaseHTTPRequestHandler):
             return
         self.send_response(404)
         self.end_headers()
+
+    def do_POST(self) -> None:
+        if self.path != "/finpilot/tool":
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        content_length = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = self.rfile.read(content_length).decode("utf-8")
+            request = json.loads(body or "{}")
+            tool_name = str(request.get("tool") or "")
+            payload = request.get("payload") or {}
+            if not isinstance(payload, dict):
+                raise ValueError("payload must be an object")
+            result = _run_finpilot_tool(tool_name, payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(result)))
+            self.end_headers()
+            self.wfile.write(result)
+        except Exception as exc:
+            result = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(result)))
+            self.end_headers()
+            self.wfile.write(result)
 
     def log_message(self, format: str, *args: Any) -> None:
         logger.debug("mcp_health_check " + format, *args)
@@ -82,6 +113,9 @@ def _run_healthcare_tool(project_id: str, tool_name: str, payload: dict[str, Any
     return HEALTHCARE_TOOLS.execute(tool_name, payload)
 
 
+def _run_finpilot_tool(tool_name: str, payload: dict[str, Any]) -> str:
+    logger.info("mcp_tool_request project=%s tool=%s", FINPILOT_PROJECT_ID, tool_name)
+    return FINPILOT_TOOLS.execute(tool_name, payload)
 def _run_zed_health_tool(method_name: str, payload: dict[str, Any]) -> dict[str, Any]:
     logger.info("mcp_tool_request project=zed-healthcare tool=%s", method_name)
     method = getattr(ZED_HEALTH_TOOLS, method_name)
@@ -179,6 +213,75 @@ def safety_guard(
 
 
 @mcp.tool()
+def finpilot_resolve_symbol(payload: dict[str, Any]) -> str:
+    """Resolve a FinPilot ticker or company name for India or US markets."""
+    return _run_finpilot_tool("finpilot_resolve_symbol", payload)
+
+
+@mcp.tool()
+def finpilot_market_snapshot(payload: dict[str, Any]) -> str:
+    """Return FinPilot live/fallback quote snapshot for a ticker."""
+    return _run_finpilot_tool("finpilot_market_snapshot", payload)
+
+
+@mcp.tool()
+def finpilot_price_history(payload: dict[str, Any]) -> str:
+    """Return FinPilot price history for a ticker and investment horizon."""
+    return _run_finpilot_tool("finpilot_price_history", payload)
+
+
+@mcp.tool()
+def finpilot_company_profile(payload: dict[str, Any]) -> str:
+    """Return FinPilot company overview, metrics, competitors, and quote context."""
+    return _run_finpilot_tool("finpilot_company_profile", payload)
+
+
+@mcp.tool()
+def finpilot_company_financials(payload: dict[str, Any]) -> str:
+    """Return FinPilot normalized company financial quality fields."""
+    return _run_finpilot_tool("finpilot_company_financials", payload)
+
+
+@mcp.tool()
+def finpilot_competitor_analysis(payload: dict[str, Any]) -> str:
+    """Return FinPilot peer/competitor names for a ticker."""
+    return _run_finpilot_tool("finpilot_competitor_analysis", payload)
+
+
+@mcp.tool()
+def finpilot_latest_news(payload: dict[str, Any]) -> str:
+    """Return FinPilot ticker-specific recent news."""
+    return _run_finpilot_tool("finpilot_latest_news", payload)
+
+
+@mcp.tool()
+def finpilot_latest_earnings(payload: dict[str, Any]) -> str:
+    """Return FinPilot earnings calendar/context for a ticker."""
+    return _run_finpilot_tool("finpilot_latest_earnings", payload)
+
+
+@mcp.tool()
+def finpilot_top_stocks(payload: dict[str, Any]) -> str:
+    """Return FinPilot top live stocks for India or US markets."""
+    return _run_finpilot_tool("finpilot_top_stocks", payload)
+
+
+@mcp.tool()
+def finpilot_market_status(payload: dict[str, Any] | None = None) -> str:
+    """Return FinPilot market status."""
+    return _run_finpilot_tool("finpilot_market_status", payload or {})
+
+
+@mcp.tool()
+def finpilot_buying_power(payload: dict[str, Any] | None = None) -> str:
+    """Return FinPilot buying-power placeholder."""
+    return _run_finpilot_tool("finpilot_buying_power", payload or {})
+
+
+@mcp.tool()
+def finpilot_search_documents(payload: dict[str, Any]) -> str:
+    """Return FinPilot document search evidence."""
+    return _run_finpilot_tool("finpilot_search_documents", payload)
 def zed_health_search_policy_documents(payload: dict[str, Any]) -> dict[str, Any]:
     """ZED Healthcare: search policy documents with RAG retrieval."""
     return _run_zed_health_tool("search_policy_documents", payload)
