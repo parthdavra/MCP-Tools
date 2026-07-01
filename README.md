@@ -5,6 +5,7 @@ FastMCP server for shared and project-specific tool execution.
 ## Current Projects
 
 - `dstrmaysam-healthcare-knowledge-multi-agent`
+- `finpilot`
 
 The healthcare backend still performs supervisor routing, agent selection, and tool selection. When configured for MCP mode, it calls the selected MCP tool here directly; this server performs only the tool execution and returns the result.
 
@@ -35,6 +36,39 @@ SSE endpoint:
 ```text
 http://localhost:9000/sse
 ```
+
+FinPilot also uses the same MCP-Tools process as the single shared tool server. FastMCP exposes the FinPilot tools on the SSE endpoint, and the local Streamlit app can call the lightweight HTTP bridge on the health server:
+
+```text
+http://localhost:9001/finpilot/tool
+```
+
+Set this in the FinPilot app environment:
+
+```env
+FINPILOT_MCP_TOOL_URL=http://localhost:9001/finpilot/tool
+```
+
+Set this in the MCP-Tools server environment when the FinPilot checkout is not the default sibling folder:
+
+```env
+FINPILOT_PROJECT_ROOT=C:\Harshasree\Assignments\FinPilot
+```
+
+The registered FinPilot MCP tools are:
+
+- `finpilot_resolve_symbol`
+- `finpilot_market_snapshot`
+- `finpilot_price_history`
+- `finpilot_company_profile`
+- `finpilot_company_financials`
+- `finpilot_competitor_analysis`
+- `finpilot_latest_news`
+- `finpilot_latest_earnings`
+- `finpilot_top_stocks`
+- `finpilot_market_status`
+- `finpilot_buying_power`
+- `finpilot_search_documents`
 
 ## Healthcare Tool Config
 
