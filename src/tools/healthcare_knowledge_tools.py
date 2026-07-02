@@ -24,6 +24,7 @@ if _local_core_src.exists() and str(_local_core_src) not in sys.path:
 
 from healthcare_tools_core import (
     DeterministicLookupService,
+    HealthcareToolExecutor,
     user_context_from_payload,
 )
 
@@ -467,6 +468,7 @@ def _requested_dates(query: str) -> list[str]:
 class HealthcareProjectTools:
     def __init__(self, config: HealthcareMcpConfig):
         self.config = config
+        self._executor = HealthcareToolExecutor(config)
         self._manifest_cache: dict[str, Any] | None = None
         self._manifest_cache_expires_at = 0.0
         self._s3_client: Any | None = None
@@ -477,20 +479,7 @@ class HealthcareProjectTools:
         self._secret_cache: dict[str, dict[str, Any]] = {}
 
     def execute(self, tool_name: str, payload: dict[str, Any]) -> str:
-        query = str(payload.get("query") or "")
-        user_context = payload.get("user_context") if isinstance(payload.get("user_context"), dict) else {}
-        extra = payload.get("extra") if isinstance(payload.get("extra"), dict) else {}
-        if tool_name in {"postgres_deterministic_lookup", "calendar_rota_lookup", "formulary_table_lookup", "table_lookup"}:
-            return self.deterministic_lookup(query, user_context, tool_name=tool_name, extra=extra)
-        if tool_name in {"document_search", "rag_search"}:
-            return self.document_search(query, user_context)
-        if tool_name == "policy_search":
-            return self.policy_search(query, user_context)
-        if tool_name in {"catalogue_search", "document_catalog"}:
-            return self.catalogue_search(query, user_context)
-        if tool_name == "safety_guard":
-            return json.dumps(_safety_assessment(query), indent=2)
-        return f"Tool {tool_name!r} is not registered for healthcare project."
+        return self._executor.execute(tool_name, payload)
 
     def _boto3_session(self):
         import boto3
@@ -554,6 +543,12 @@ class HealthcareProjectTools:
         tool_name: str = "",
         extra: dict[str, Any] | None = None,
     ) -> str:
+        return self._executor.execute_tool(
+            tool_name or "postgres_deterministic_lookup",
+            query,
+            user_context=user_context,
+            extra=extra or {},
+        )
         extra = extra or {}
         user = user_context_from_payload(user_context)
         table_assets = extra.get("table_assets") if isinstance(extra.get("table_assets"), list) else None
@@ -719,6 +714,7 @@ class HealthcareProjectTools:
             return ""
 
     def document_search(self, query: str, user_context: dict[str, Any]) -> str:
+        return self._executor.execute_tool("document_search", query, user_context=user_context)
         if not self.config.use_local_resources() and self.config.opensearch_endpoint:
             hits = self._opensearch_search(query, user_context)
             if hits:
@@ -882,6 +878,7 @@ class HealthcareProjectTools:
         return merged
 
     def policy_search(self, query: str, user_context: dict[str, Any]) -> str:
+        return self._executor.execute_tool("policy_search", query, user_context=user_context)
         if not self.config.use_local_resources() and self.config.opensearch_endpoint:
             hits = [
                 hit
@@ -909,6 +906,7 @@ class HealthcareProjectTools:
             self._manifest = original_manifest  # type: ignore[method-assign]
 
     def catalogue_search(self, query: str, user_context: dict[str, Any]) -> str:
+        return self._executor.execute_tool("catalogue_search", query, user_context=user_context)
         terms = _catalog_terms(query)
         matches = []
         for record in self._manifest():
