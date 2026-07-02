@@ -282,6 +282,8 @@ def finpilot_buying_power(payload: dict[str, Any] | None = None) -> str:
 def finpilot_search_documents(payload: dict[str, Any]) -> str:
     """Return FinPilot document search evidence."""
     return _run_finpilot_tool("finpilot_search_documents", payload)
+
+@mcp.tool()
 def zed_health_search_policy_documents(payload: dict[str, Any]) -> dict[str, Any]:
     """ZED Healthcare: search policy documents with RAG retrieval."""
     return _run_zed_health_tool("search_policy_documents", payload)
