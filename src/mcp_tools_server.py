@@ -106,7 +106,7 @@ def _validate_project(project_id: str) -> str | None:
 
 
 def _run_healthcare_tool(project_id: str, tool_name: str, payload: dict[str, Any]) -> str:
-    logger.info("mcp_tool_request project=%s tool=%s", project_id, tool_name)
+    logger.info("healthcare_mcp_tool_request project=%s tool=%s", project_id, tool_name)
     validation_error = _validate_project(project_id)
     if validation_error:
         return validation_error
