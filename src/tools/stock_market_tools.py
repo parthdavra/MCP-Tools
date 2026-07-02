@@ -407,16 +407,109 @@ def register_stock_market_tools(mcp: Any) -> None:
 
     @mcp.tool()
     def stock_performance_analysis(question: str, investment_amount: float = 1000.0) -> dict[str, Any]:
-        """Return a simple 5-year stock performance placeholder with current quote context."""
+        """Return real 5-year monthly stock performance using Yahoo Finance history."""
         tickers = extract_tickers_or_company_names(question) or [resolve_ticker_or_company(question)]
-        quotes = [get_quote(ticker) for ticker in tickers]
-        answer = "\n\n".join(
-            f"{quote.ticker} — {quote.company_name or 'Company name unavailable'}\n"
-            f"- Current price: {format_money(quote.price, quote.currency)}\n"
-            "- Detailed 5-year monthly history can be added with yfinance history(period='5y')."
-            for quote in quotes
-        )
-        return {"answer": "5-year stock analysis:\n\n" + answer, "tickers": [q.ticker for q in quotes], "sources": ["Yahoo Finance via yfinance"]}
+        sections: list[str] = []
+        histories: dict[str, list[dict[str, Any]]] = {}
+
+        for ticker in tickers:
+            quote = get_quote(ticker)
+            try:
+                history = yf.Ticker(quote.ticker).history(period="5y", interval="1mo", auto_adjust=False)
+            except Exception as exc:
+                sections.append(
+                    f"{quote.ticker} — {quote.company_name or 'Company name unavailable'}\n"
+                    f"- Current price: {format_money(quote.price, quote.currency)}\n"
+                    f"- 5-year monthly history unavailable from Yahoo Finance: {exc}"
+                )
+                histories[quote.ticker] = []
+                continue
+
+            if history is None or history.empty or "Close" not in history.columns:
+                sections.append(
+                    f"{quote.ticker} — {quote.company_name or 'Company name unavailable'}\n"
+                    f"- Current price: {format_money(quote.price, quote.currency)}\n"
+                    "- 5-year monthly history unavailable from Yahoo Finance."
+                )
+                histories[quote.ticker] = []
+                continue
+
+            monthly = history.dropna(subset=["Close"]).copy()
+            monthly_rows: list[dict[str, Any]] = []
+            for idx, row in monthly.iterrows():
+                close = float(row.get("Close", 0) or 0)
+                open_price = float(row.get("Open", close) or close)
+                high = float(row.get("High", close) or close)
+                low = float(row.get("Low", close) or close)
+                volume = int(row.get("Volume", 0) or 0)
+                monthly_rows.append(
+                    {
+                        "month": idx.strftime("%Y-%m"),
+                        "open": round(open_price, 2),
+                        "high": round(high, 2),
+                        "low": round(low, 2),
+                        "close": round(close, 2),
+                        "volume": volume,
+                    }
+                )
+            histories[quote.ticker] = monthly_rows
+
+            first_close = monthly_rows[0]["close"]
+            last_close = monthly_rows[-1]["close"]
+            high_5y = max(row["high"] for row in monthly_rows)
+            low_5y = min(row["low"] for row in monthly_rows)
+            five_year_return = ((last_close - first_close) / first_close * 100) if first_close else 0
+            shares_at_start = investment_amount / first_close if first_close else 0
+            current_value = shares_at_start * last_close
+            profit_loss = current_value - investment_amount
+
+            yearly_lines: list[str] = []
+            years = sorted({row["month"][:4] for row in monthly_rows})
+            for year in years:
+                year_rows = [row for row in monthly_rows if row["month"].startswith(year)]
+                if not year_rows:
+                    continue
+                y_start = year_rows[0]["close"]
+                y_end = year_rows[-1]["close"]
+                y_return = ((y_end - y_start) / y_start * 100) if y_start else 0
+                yearly_lines.append(f"  - {year}: {y_start:.2f} -> {y_end:.2f} ({y_return:+.2f}%)")
+
+            recent_lines = [
+                f"  - {row['month']}: open {row['open']:.2f}, high {row['high']:.2f}, low {row['low']:.2f}, close {row['close']:.2f}, volume {row['volume']:,}"
+                for row in monthly_rows[-6:]
+            ]
+            monthly_history_lines = [
+                f"  - {row['month']}: close {row['close']:.2f}"
+                for row in monthly_rows
+            ]
+
+            trend = "positive" if five_year_return > 0 else "negative" if five_year_return < 0 else "flat"
+            sections.append(
+                "\n".join(
+                    [
+                        f"{quote.ticker} — {quote.company_name or 'Company name unavailable'}",
+                        f"- Current price: {format_money(quote.price, quote.currency)}",
+                        f"- 5-year start close: {format_money(first_close, quote.currency)}",
+                        f"- Latest monthly close: {format_money(last_close, quote.currency)}",
+                        f"- 5-year return: {five_year_return:+.2f}% ({trend} trend)",
+                        f"- 5-year high/low: {format_money(high_5y, quote.currency)} / {format_money(low_5y, quote.currency)}",
+                        f"- Profit/loss scenario: {format_money(investment_amount, quote.currency)} invested 5 years ago would be about {format_money(current_value, quote.currency)} ({format_money(profit_loss, quote.currency)} gain/loss).",
+                        "- Year-by-year monthly-close performance:",
+                        *yearly_lines,
+                        "- Recent 6 monthly records:",
+                        *recent_lines,
+                        "- Full 5-year monthly close history:",
+                        *monthly_history_lines,
+                    ]
+                )
+            )
+
+        return {
+            "answer": "5-year stock analysis:\n\n" + "\n\n".join(sections) + "\n\nDisclaimer: Educational research only, not financial advice.",
+            "tickers": tickers,
+            "history": histories,
+            "sources": ["Yahoo Finance via yfinance monthly history"],
+        }
 
     @mcp.tool()
     def suggest_best_stock_of_month(question: str, universe: list[str] | None = None, top_n: int = 5) -> dict[str, Any]:
