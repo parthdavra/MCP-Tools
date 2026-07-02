@@ -478,11 +478,6 @@ def register_stock_market_tools(mcp: Any) -> None:
                 f"  - {row['month']}: open {row['open']:.2f}, high {row['high']:.2f}, low {row['low']:.2f}, close {row['close']:.2f}, volume {row['volume']:,}"
                 for row in monthly_rows[-6:]
             ]
-            monthly_history_lines = [
-                f"  - {row['month']}: close {row['close']:.2f}"
-                for row in monthly_rows
-            ]
-
             trend = "positive" if five_year_return > 0 else "negative" if five_year_return < 0 else "flat"
             sections.append(
                 "\n".join(
@@ -498,8 +493,7 @@ def register_stock_market_tools(mcp: Any) -> None:
                         *yearly_lines,
                         "- Recent 6 monthly records:",
                         *recent_lines,
-                        "- Full 5-year monthly close history:",
-                        *monthly_history_lines,
+                        "- Full 5-year monthly close history is returned as structured chart data for the UI.",
                     ]
                 )
             )

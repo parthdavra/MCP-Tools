@@ -43,7 +43,7 @@ services:
       - ZED_HEALTH_DATA_DIR=/zed-healthcare/data
     volumes:
       - ../dstrmaysam-heakthcare-knowledge-agent-multi-agent/data:/app/data:ro
-      - C:/Users/fakha/itc/Project Healthcare/backend:/zed-healthcare/backend:ro
-      - C:/Users/fakha/itc/Project Healthcare/data:/zed-healthcare/data
+      - ../Project Healthcare/backend:/zed-healthcare/backend:ro
+      - ../Project Healthcare/data:/zed-healthcare/data
       - ${USERPROFILE}/.aws:/root/.aws:ro
     restart: unless-stopped
