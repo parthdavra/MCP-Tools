@@ -59,6 +59,16 @@ STOPWORDS = {
     "which",
     "who",
 }
+CATALOG_RESULT_LIMIT = 50
+CATALOG_QUERY_STOPWORDS = STOPWORDS | {
+    "available",
+    "catalog",
+    "catalogue",
+    "document",
+    "documents",
+    "file",
+    "files",
+}
 
 DEFAULT_MCP_SECRET_NAME = "/dstrmaysam-healthcare-knowledge-multi-agent-dev/mcp-tools"
 
@@ -266,6 +276,14 @@ class HealthcareMcpConfig:
 
 def _terms(query: str) -> list[str]:
     return [term for term in re.findall(r"[a-z0-9_@.+-]+", query.lower()) if term and term not in STOPWORDS]
+
+
+def _catalog_terms(query: str) -> list[str]:
+    return [
+        term
+        for term in re.findall(r"[a-z0-9_@.+-]+", query.lower())
+        if term and term not in CATALOG_QUERY_STOPWORDS
+    ]
 
 
 def _like(term: str) -> str:
@@ -891,7 +909,7 @@ class HealthcareProjectTools:
             self._manifest = original_manifest  # type: ignore[method-assign]
 
     def catalogue_search(self, query: str, user_context: dict[str, Any]) -> str:
-        terms = _terms(query)
+        terms = _catalog_terms(query)
         matches = []
         for record in self._manifest():
             metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
@@ -907,7 +925,19 @@ class HealthcareProjectTools:
                         "metadata": metadata,
                     }
                 )
-        return json.dumps(matches[:20], indent=2, default=str)
+        limited_matches = matches[:CATALOG_RESULT_LIMIT]
+        return json.dumps(
+            {
+                "kind": "document_catalog",
+                "query": query,
+                "total_matches": len(matches),
+                "returned_count": len(limited_matches),
+                "limit": CATALOG_RESULT_LIMIT,
+                "documents": limited_matches,
+            },
+            indent=2,
+            default=str,
+        )
 
 
 HEALTHCARE_PROJECT_ID = "dstrmaysam-healthcare-knowledge-multi-agent"
